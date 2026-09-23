@@ -1,0 +1,38 @@
+<!doctype html>
+<html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Poker Formula V1</title>
+<style>
+html,body{margin:0;background:#000;color:#fff;height:100%;font-family:-apple-system,BlinkMacSystemFont,"Helvetica Neue",sans-serif}
+body{display:flex;align-items:center;justify-content:center}
+main{text-align:center}.code{font-size:28px;letter-spacing:2px;height:36px}
+.clock{font-size:72px;letter-spacing:-3px}button{margin-top:30px;padding:12px 22px;border:0;border-radius:24px}
+.status{margin-top:20px;opacity:.55;font-size:14px}
+</style>
+<main>
+<div class="code" id="code"></div>
+<div class="clock" id="clock">—:——</div>
+<button id="listen">Listen</button>
+<div class="status" id="status">Ready</div>
+</main>
+<script>
+const ranks={ace:"A",aces:"A",king:"K",kings:"K",queen:"Q",queens:"Q",jack:"J",jacks:"J",
+ten:"10",tens:"10",nine:"9",nines:"9",eight:"8",eights:"8",seven:"7",sevens:"7",
+six:"6",sixes:"6",five:"5",fives:"5",four:"4",fours:"4",three:"3",threes:"3",
+two:"2",twos:"2"};
+function parseHand(s){let a=[];s=s.toLowerCase();for(const [w,r] of Object.entries(ranks)){
+let m=s.match(new RegExp("\\b"+w+"\\b","g"))||[];for(let i=0;i<m.length;i++)a.push(r)}return a}
+function handleSpeech(s){
+let cards=parseHand(s);
+if(cards.length>=5)document.getElementById("status").textContent="Heard: "+cards.join("");
+let nums=s.match(/\b([1-9]|1[0-9]|20)\b/g);
+if(nums)document.getElementById("status").textContent="Committed: "+nums[nums.length-1];
+}
+document.getElementById("listen").onclick=()=>{
+const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+if(!SR){document.getElementById("status").textContent="Speech recognition unavailable";return}
+let r=new SR();r.lang="en-US";r.continuous=true;r.interimResults=true;
+r.onresult=e=>{let s="";for(let i=e.resultIndex;i<e.results.length;i++)s+=e.results[i][0].transcript+" ";handleSpeech(s)};
+r.onerror=e=>document.getElementById("status").textContent="Mic: "+e.error;
+r.start();document.getElementById("listen").style.display="none";document.getElementById("status").textContent="Listening…";
+};
+</script></html>
