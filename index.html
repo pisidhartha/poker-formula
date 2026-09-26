@@ -1,38 +1,20 @@
 <!doctype html>
-<html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Poker Formula V1</title>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#000"><title>Poker Formula</title>
 <style>
-html,body{margin:0;background:#000;color:#fff;height:100%;font-family:-apple-system,BlinkMacSystemFont,"Helvetica Neue",sans-serif}
-body{display:flex;align-items:center;justify-content:center}
-main{text-align:center}.code{font-size:28px;letter-spacing:2px;height:36px}
-.clock{font-size:72px;letter-spacing:-3px}button{margin-top:30px;padding:12px 22px;border:0;border-radius:24px}
-.status{margin-top:20px;opacity:.55;font-size:14px}
-</style>
-<main>
-<div class="code" id="code"></div>
-<div class="clock" id="clock">—:——</div>
-<button id="listen">Listen</button>
-<div class="status" id="status">Ready</div>
-</main>
+*{box-sizing:border-box}html,body{margin:0;background:#000;color:#eee;font-family:-apple-system,BlinkMacSystemFont,"Helvetica Neue",Arial,sans-serif}body{min-height:100vh;display:grid;place-items:center}main{width:100%;max-width:520px;padding:28px 22px;text-align:center}#clock{font-size:clamp(56px,18vw,92px);font-weight:300;letter-spacing:-3px}#code{margin-top:18px;font-size:clamp(26px,8vw,42px);letter-spacing:8px}#status{margin-top:28px;min-height:24px;font-size:15px;color:#aaa}.controls{margin-top:30px;display:flex;gap:12px;justify-content:center}button{border:1px solid #444;background:#111;color:#eee;border-radius:999px;padding:13px 22px;font-size:16px}#transcript{margin-top:22px;min-height:44px;font-size:14px;color:#777}.small{font-size:12px;color:#555;margin-top:24px}
+</style></head>
+<body><main><div id="clock">—</div><div id="code">•••••</div><div id="status">Ready</div><div class="controls"><button id="listen">Listen</button><button id="ready">Ready</button></div><div id="transcript"></div><div class="small">Say “So” to commit.</div></main>
 <script>
-const ranks={ace:"A",aces:"A",king:"K",kings:"K",queen:"Q",queens:"Q",jack:"J",jacks:"J",
-ten:"10",tens:"10",nine:"9",nines:"9",eight:"8",eights:"8",seven:"7",sevens:"7",
-six:"6",sixes:"6",five:"5",fives:"5",four:"4",fours:"4",three:"3",threes:"3",
-two:"2",twos:"2"};
-function parseHand(s){let a=[];s=s.toLowerCase();for(const [w,r] of Object.entries(ranks)){
-let m=s.match(new RegExp("\\b"+w+"\\b","g"))||[];for(let i=0;i<m.length;i++)a.push(r)}return a}
-function handleSpeech(s){
-let cards=parseHand(s);
-if(cards.length>=5)document.getElementById("status").textContent="Heard: "+cards.join("");
-let nums=s.match(/\b([1-9]|1[0-9]|20)\b/g);
-if(nums)document.getElementById("status").textContent="Committed: "+nums[nums.length-1];
-}
-document.getElementById("listen").onclick=()=>{
-const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
-if(!SR){document.getElementById("status").textContent="Speech recognition unavailable";return}
-let r=new SR();r.lang="en-US";r.continuous=true;r.interimResults=true;
-r.onresult=e=>{let s="";for(let i=e.resultIndex;i<e.results.length;i++)s+=e.results[i][0].transcript+" ";handleSpeech(s)};
-r.onerror=e=>document.getElementById("status").textContent="Mic: "+e.error;
-r.start();document.getElementById("listen").style.display="none";document.getElementById("status").textContent="Listening…";
-};
-</script></html>
+(()=>{const $=id=>document.getElementById(id),clock=$("clock"),code=$("code"),status=$("status"),transcript=$("transcript"),listen=$("listen"),ready=$("ready");
+const SR=window.SpeechRecognition||window.webkitSpeechRecognition;let r,listening=false,targetCommitted=false,playerCommitted=false,target=null,range=null;
+const demo={QQQAA:{min:4,max:8,solutions:{4:["40","05651"],5:["40","05651"],6:["40","05651"],7:["40","05651"],8:["40","05651"]}}};
+const ranks={ace:"A",aces:"A",king:"K",kings:"K",queen:"Q",queens:"Q",jack:"J",jacks:"J",ten:"10",tens:"10",nine:"9",nines:"9",eight:"8",eights:"8",seven:"7",sevens:"7",six:"6",sixes:"6",five:"5",fives:"5",four:"4",fours:"4",three:"3",threes:"3",two:"2",twos:"2"};
+function norm(s){return s.toLowerCase().replace(/[.,!?]/g," ").replace(/\s+/g," ").trim()}
+function targetOf(s){s=norm(s);if(/\bthree queens?\b/.test(s)&&/\btwo aces?\b/.test(s))return"QQQAA";if(/\bthree aces?\b/.test(s)&&/\btwo queens?\b/.test(s))return"AAAQQ";let a=[];for(const k in ranks){const n=(s.match(new RegExp("\\b"+k+"\\b","g"))||[]).length;for(let i=0;i<n;i++)a.push(ranks[k])}return a.length?a.join(""):null}
+function numberOf(s){s=norm(s);const m={one:1,two:2,three:3,four:4,five:5,six:6,seven:7,eight:8,nine:9,ten:10,eleven:11,twelve:12,thirteen:13};for(const k in m)if(new RegExp("\\b"+k+"\\b").test(s))return m[k];const x=s.match(/\b(1[0-3]|[1-9])\b/);return x?+x[1]:null}
+function tick(){const d=new Date();if(range&&!playerCommitted)clock.textContent=range.min+":"+String(range.max).padStart(2,"0");else if(playerCommitted)clock.textContent=(d.getHours()%12||12)+":"+window.cut;else clock.textContent=d.toLocaleTimeString([],{hour:"numeric",minute:"2-digit"})}setInterval(tick,1000);tick();
+function process(raw){transcript.textContent="“"+raw+"”";let s=norm(raw),i=s.search(/\bso\b/);if(i<0)return;let after=s.slice(i+2).trim();if(!targetCommitted){target=targetOf(after);if(!target){status.textContent="I heard “So”, but not a target.";return}targetCommitted=true;range=demo[target]&&{min:demo[target].min,max:demo[target].max};status.textContent=range?"Committed "+target+" · valid range "+range.min+"–"+range.max:"Committed "+target+" · formula data pending";tick()}else if(!playerCommitted){let n=numberOf(after);if(!n){status.textContent="I heard “So”, but not a number.";return}if(range&&(n<range.min||n>range.max)){status.textContent="Choose a number from "+range.min+" to "+range.max+".";return}playerCommitted=true;let sol=demo[target]?.solutions?.[n];if(sol){window.cut=sol[0];code.textContent=sol[1];status.textContent="Committed "+n}else status.textContent="Committed "+n+" · lookup pending";tick()}}
+function setup(){if(!SR){status.textContent="Speech recognition unavailable in this browser.";listen.disabled=true;return}r=new SR;r.lang="en-US";r.continuous=true;r.interimResults=true;r.maxAlternatives=1;r.onstart=()=>{listening=true;listen.textContent="Listening";status.textContent=targetCommitted?"Listening for player number…":"Listening…"};r.onresult=e=>{let t="";for(let i=e.resultIndex;i<e.results.length;i++)if(e.results[i].isFinal)t+=e.results[i][0].transcript;else transcript.textContent="“"+e.results[i][0].transcript+"”";if(t)process(t)};r.onerror=e=>{status.textContent="Speech: "+e.error;listening=false;listen.textContent="Listen"};r.onend=()=>{listening=false;listen.textContent="Listen";if(window.keepListening)setTimeout(()=>{try{r.start()}catch(e){}},250)}}
+listen.onclick=()=>{if(!r)setup();if(!r)return;if(!listening){window.keepListening=true;try{r.start()}catch(e){}}else{window.keepListening=false;r.stop()}}
+ready.onclick=()=>{window.keepListening=false;if(r&&listening)r.stop();targetCommitted=false;playerCommitted=false;target=null;range=null;window.cut=null;code.textContent="•••••";status.textContent="Ready";transcript.textContent="";tick()};setup()})()
+</script></body></html>
