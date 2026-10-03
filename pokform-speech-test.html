@@ -1,0 +1,188 @@
+<!doctype html>
+<html><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#000">
+<title>Pokform Speech Test</title>
+<style>
+*{box-sizing:border-box}
+html,body{margin:0;background:#000;color:#eee;font-family:-apple-system,BlinkMacSystemFont,"Helvetica Neue",Arial,sans-serif}
+body{min-height:100vh;display:grid;place-items:center}
+main{width:100%;max-width:520px;padding:28px 22px;text-align:center}
+#clock{font-size:clamp(52px,17vw,88px);font-weight:300;letter-spacing:-3px}
+#mode{margin-top:12px;font-size:13px;color:#777;text-transform:uppercase;letter-spacing:2px}
+#normalized{margin-top:22px;font-size:clamp(25px,7vw,38px);min-height:48px}
+#status{margin-top:20px;min-height:24px;font-size:15px;color:#aaa}
+.controls{margin-top:26px;display:flex;gap:10px;justify-content:center;flex-wrap:wrap}
+button{border:1px solid #444;background:#111;color:#eee;border-radius:999px;padding:13px 18px;font-size:15px}
+button.active{background:#eee;color:#000}
+.label{margin-top:28px;font-size:11px;color:#555;text-transform:uppercase;letter-spacing:1.5px}
+#raw,#final{margin-top:8px;min-height:32px;font-size:15px;color:#888;word-break:break-word}
+#final{color:#bbb}
+.small{font-size:12px;color:#555;margin-top:24px;line-height:1.5}
+</style></head>
+<body><main>
+<div id="clock">—</div>
+<div id="mode">Normal speech</div>
+<div id="normalized">Ready</div>
+<div id="status">Tap Listen</div>
+
+<div class="controls">
+  <button id="listen">Listen</button>
+  <button id="numberMode">Number mode</button>
+  <button id="reset">Reset</button>
+</div>
+
+<div class="label">Live / raw transcript</div>
+<div id="raw"></div>
+<div class="label">Final transcript</div>
+<div id="final"></div>
+
+<div class="small">
+Speech diagnostic build. “space” is normalized to “spades”.
+Number homophones are normalized only while Number mode is active.
+</div>
+
+<script>
+(()=>{
+const $=id=>document.getElementById(id);
+const clock=$("clock"), mode=$("mode"), normalized=$("normalized"),
+      status=$("status"), raw=$("raw"), final=$("final"),
+      listen=$("listen"), numberMode=$("numberMode"), reset=$("reset");
+
+const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+let r=null, listening=false, keepListening=false, expectNumber=false;
+
+function tick(){
+  clock.textContent=new Date().toLocaleTimeString([],{hour:"numeric",minute:"2-digit"});
+}
+setInterval(tick,1000); tick();
+
+function clean(s){
+  return (s||"").toLowerCase().replace(/[.,!?]/g," ").replace(/\s+/g," ").trim();
+}
+
+function normalizeSpeech(s){
+  s=clean(s);
+
+  // User-tested persistent ASR collision.
+  s=s.replace(/\bspace\b/g,"spades");
+
+  // Treat spelling/number rendering as equivalent.
+  const basic={
+    "zero":"0","one":"1","two":"2","three":"3","four":"4","five":"5",
+    "six":"6","seven":"7","eight":"8","nine":"9","ten":"10",
+    "eleven":"11","twelve":"12","thirteen":"13"
+  };
+
+  // Aggressive homophones only in explicit number context.
+  const numberOnly={
+    "tree":"3","free":"3",
+    "for":"4",
+    "fine":"5",
+    "sick":"6",
+    "heaven":"7",
+    "ate":"8","hate":"8",
+    "mine":"9","line":"9",
+    "then":"10"
+  };
+
+  let map=expectNumber ? {...basic,...numberOnly} : basic;
+  const words=s.split(" ").map(w => Object.prototype.hasOwnProperty.call(map,w) ? map[w] : w);
+  return words.join(" ");
+}
+
+function showFinal(t){
+  final.textContent='“'+t+'”';
+  normalized.textContent=normalizeSpeech(t)||"—";
+}
+
+function setNumberMode(on){
+  expectNumber=on;
+  mode.textContent=on ? "Number mode" : "Normal speech";
+  numberMode.classList.toggle("active",on);
+  status.textContent=on ? "Next speech is interpreted as number-biased" :
+                         (listening ? "Listening…" : "Ready");
+}
+
+function setup(){
+  if(!SR){
+    status.textContent="Speech recognition unavailable in this browser.";
+    listen.disabled=true; return;
+  }
+  r=new SR();
+  r.lang="en-US";
+  r.continuous=true;
+  r.interimResults=true;
+  r.maxAlternatives=3;
+
+  // Optional contextual hints: harmless enhancement when supported.
+  try{
+    if("phrases" in r && window.SpeechRecognitionPhrase){
+      r.phrases=[
+        new SpeechRecognitionPhrase("spades",10),
+        new SpeechRecognitionPhrase("one",6),
+        new SpeechRecognitionPhrase("eight",6)
+      ];
+    }
+  }catch(e){}
+
+  r.onstart=()=>{
+    listening=true;
+    listen.textContent="Listening";
+    status.textContent=expectNumber ? "Listening · number mode" : "Listening…";
+  };
+
+  r.onresult=e=>{
+    let finals=[];
+    for(let i=e.resultIndex;i<e.results.length;i++){
+      const best=e.results[i][0]?.transcript||"";
+      if(e.results[i].isFinal) finals.push(best);
+      else raw.textContent='“'+best+'”';
+    }
+    if(finals.length){
+      const t=finals.join(" ").trim();
+      raw.textContent='“'+t+'”';
+      showFinal(t);
+    }
+  };
+
+  r.onerror=e=>{
+    status.textContent="Speech: "+e.error;
+    listening=false;
+    listen.textContent="Listen";
+  };
+
+  r.onend=()=>{
+    listening=false;
+    listen.textContent="Listen";
+    if(keepListening) setTimeout(()=>{try{r.start()}catch(e){}},250);
+  };
+}
+
+listen.onclick=()=>{
+  if(!r) setup();
+  if(!r) return;
+  if(!listening){
+    keepListening=true;
+    try{r.start()}catch(e){}
+  }else{
+    keepListening=false;
+    r.stop();
+  }
+};
+
+numberMode.onclick=()=>setNumberMode(!expectNumber);
+
+reset.onclick=()=>{
+  expectNumber=false;
+  setNumberMode(false);
+  raw.textContent="";
+  final.textContent="";
+  normalized.textContent="Ready";
+};
+
+setup();
+})();
+</script>
+</main></body></html>
